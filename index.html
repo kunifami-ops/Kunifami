@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dance Master Pro - Private Mirror Edition</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        canvas { width: 100vw; height: 100vh; object-fit: contain; background: #111; }
+        .fade-ui { transition: opacity 0.5s ease, visibility 0.5s; opacity: 0; visibility: hidden; }
+        .ui-visible { opacity: 1; visibility: visible; }
+        
+        /* UIレイアウト */
+        .ui-top { position: fixed; top: 10px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; flex-wrap: wrap; }
+        .ui-bottom { 
+            position: fixed; bottom: 40px; width: 94%; left: 3%;
+            display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 100; 
+            background: rgba(0,0,0,0.7); padding: 12px 0; border-radius: 20px; backdrop-filter: blur(8px);
+        }
+        
+        /* ミラー設定パネル */
+        .mirror-panel {
+            background: rgba(44, 44, 46, 0.9); padding: 10px; border-radius: 15px;
+            display: flex; gap: 15px; font-size: 12px; margin-bottom: 5px; border: 1px solid #444;
+        }
+
+        #seekBar { width: 90%; height: 20px; accent-color: #007AFF; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        button { padding: 10px 14px; border-radius: 10px; border: none; font-weight: bold; background: #444; color: white; font-size: 13px; }
+        .active-blue { background: #007AFF !important; }
+        #recordBtn { background: #ff3b30; }
+        .loop-active { background: #ff9500 !important; }
+
+        #saveContainer { 
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: #1c1c1e; padding: 20px; border-radius: 25px; z-index: 2000; width: 85%;
+            box-shadow: 0 0 40px rgba(0,0,0,0.9); border: 1px solid #444; text-align: center;
+        }
+        #previewVid { width: 100%; border-radius: 15px; background: #000; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <button id="startBtn" style="position:fixed; inset:0; background:#007AFF; z-index:1000; color:white; border:none; font-size:20px;" onclick="initApp()">1. 合言葉を入力して開始</button>
+
+    <div id="topPanel" class="ui-top fade-ui">
+        <input type="file" id="fileInput" accept="video/*" onchange="loadVideo(event)" style="width:110px;">
+        <button onclick="switchLayout()">📺 表示切替</button>
+        <button id="recordBtn" onclick="toggleRecording()">録画開始</button>
+    </div>
+
+    <div id="bottomPanel" class="ui-bottom fade-ui">
+        <div class="mirror-panel">
+            <label><input type="checkbox" id="mirrorModel" checked onchange="showUI()"> お手本反転</label>
+            <label><input type="checkbox" id="mirrorMe" checked onchange="showUI()"> 自分を反転</label>
+        </div>
+
+        <div style="font-size: 11px; color: #aaa;" id="timeDisplay">0s / 0s</div>
+        <input type="range" id="seekBar" value="0" step="0.1">
+        
+        <div class="btn-row">
+            <button onclick="modelVid.currentTime -= 5">⏪ 5s</button>
+            <button id="playPauseBtn" onclick="togglePlay()">▶️ 再生</button>
+            <button onclick="modelVid.currentTime += 5">5s ⏩</button>
+        </div>
+        
+        <div class="btn-row">
+            <button onclick="setPoint('A')" id="btnA">📍 A: --</button>
+            <button onclick="setPoint('B')" id="btnB">📍 B: --</button>
+            <button onclick="toggleLoop()" id="btnLoop">🔁 ループ OFF</button>
+        </div>
+    </div>
+
+    <div id="saveContainer">
+        <h3 style="margin-top:0;">録画完了</h3>
+        <video id="previewVid" playsinline controls webkit-playsinline></video>
+        <div style="display:flex; gap:10px;">
+            <button onclick="closeSaveUI()" style="background:#555; flex:1;">閉じる</button>
+            <button id="shareBtn" onclick="shareVideo()" style="background:#007AFF; flex:2;">動画を保存・共有</button>
+        </div>
+        <div id="saveStatus" style="font-size:12px; color:#007AFF; margin-top:10px;"></div>
+    </div>
+
+    <canvas id="mainCanvas" onclick="handleCanvasClick()"></canvas>
+    <video id="modelVideo" loop playsinline style="display:none;"></video>
+    <video id="myCamera" autoplay muted playsinline style="display:none;"></video>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const modelVid = document.getElementById('modelVideo');
+        const myCam = document.getElementById('myCamera');
+        const seekBar = document.getElementById('seekBar');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const mirrorModelCheck = document.getElementById('mirrorModel');
+        const mirrorMeCheck = document.getElementById('mirrorMe');
+        
+        let pointA = 0, pointB = 0, isLooping = false;
+        let displayMode = 0; 
+        let mediaRecorder, recordedChunks = [];
+        let audioCtx, destination, source;
+        let lastBlob;
+
+        canvas.width = 1280; 
+        canvas.height = 720;
+
+        // --- 修正：合言葉チェック付きの初期化関数 ---
+        async function initApp() {
+            // 【合言葉の設定】好きな言葉に変更してください
+            const SECRET_WORD = "dance777"; 
+            const userInput = prompt("合言葉を入力してください");
+
+            if (userInput !== SECRET_WORD) {
+                alert("合言葉が正しくありません。");
+                return;
+            }
+
+            try {
+                // パスワードが合致した時のみ、Audioエンジンとカメラを起動
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                destination = audioCtx.createMediaStreamDestination();
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: { ideal: 1280 } }, 
+                    audio: false 
+                });
+                
+                myCam.srcObject = stream;
+                
+                // お手本ビデオをオーディオエンジンに接続（録画用）
+                source = audioCtx.createMediaElementSource(modelVid);
+                source.connect(audioCtx.destination);
+                source.connect(destination);
+
+                document.getElementById('startBtn').style.display = 'none';
+                showUI();
+                requestAnimationFrame(drawLoop);
+            } catch (e) { 
+                alert("カメラまたは音響の初期化に失敗しました。Safariの設定でカメラを許可してください。"); 
+            }
+        }
+
+        function drawLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.imageSmoothingEnabled = true;
+
+            const isMirrorModel = mirrorModelCheck.checked;
+            const isMirrorMe = mirrorMeCheck.checked;
+
+            if (displayMode === 0) {
+                drawVideo(modelVid, 0, 0, canvas.width / 2, canvas.height, isMirrorModel);
+                drawVideo(myCam, canvas.width / 2, 0, canvas.width / 2, canvas.height, isMirrorMe);
+            } else if (displayMode === 1) {
+                drawVideo(modelVid, 0, 0, canvas.width, canvas.height, isMirrorModel);
+            } else if (displayMode === 2) {
+                drawVideo(myCam, 0, 0, canvas.width, canvas.height, isMirrorMe);
+            }
+            requestAnimationFrame(drawLoop);
+        }
+
+        function drawVideo(video, x, y, w, h, isMirror) {
+            ctx.save();
+            if (isMirror) {
+                ctx.translate(x + w, y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, w, h);
+            } else {
+                ctx.drawImage(video, x, y, w, h);
+            }
+            ctx.restore();
+        }
+
+        async function shareVideo() {
+            if (!lastBlob) return;
+            try {
+                const file = new File([lastBlob], "dance_practice.mp4", { type: "video/mp4" });
+                if (navigator.share) {
+                    await navigator.share({ files: [file], title: 'My Dance' });
+                } else {
+                    const a = document.createElement('a'); a.href = URL.createObjectURL(lastBlob); a.download = 'dance.mp4'; a.click();
+                }
+            } catch (err) { console.log("Share failed:", err); }
+        }
+
+        function toggleRecording() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                recordBtn.innerText = "録画開始";
+            } else {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                recordedChunks = [];
+                const videoStream = canvas.captureStream(30);
+                const combinedStream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/mp4' });
+                mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    lastBlob = new Blob(recordedChunks, { type: "video/mp4" });
+                    document.getElementById('previewVid').src = URL.createObjectURL(lastBlob);
+                    document.getElementById('saveContainer').style.display = 'block';
+                };
+                mediaRecorder.start();
+                recordBtn.innerText = "停止";
+            }
+        }
+
+        function loadVideo(event) {
+            const file = event.target.files[0];
+            if(file) {
+                modelVid.src = URL.createObjectURL(file);
+                modelVid.load();
+                modelVid.onloadedmetadata = () => { seekBar.max = modelVid.duration; pointA = 0; pointB = modelVid.duration; };
+            }
+        }
+
+        function togglePlay() {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            if (modelVid.paused) { modelVid.play(); playPauseBtn.innerText = "⏸ 一時停止"; }
+            else { modelVid.pause(); playPauseBtn.innerText = "▶️ 再生"; }
+            showUI();
+        }
+
+        function setPoint(type) {
+            const time = modelVid.currentTime;
+            if (type === 'A') { pointA = time; document.getElementById('btnA').innerText = `📍 A: ${Math.floor(time)}s`; }
+            else { pointB = time; document.getElementById('btnB').innerText = `📍 B: ${Math.floor(time)}s`; }
+        }
+
+        function toggleLoop() {
+            isLooping = !isLooping;
+            const btn = document.getElementById('btnLoop');
+            if (isLooping) { btn.innerText = "🔁 ループ ON"; btn.classList.add('loop-active'); modelVid.currentTime = pointA; modelVid.play(); }
+            else { btn.innerText = "🔁 ループ OFF"; btn.classList.remove('loop-active'); }
+        }
+
+        modelVid.addEventListener('timeupdate', () => {
+            if (isLooping && modelVid.currentTime >= pointB) modelVid.currentTime = pointA;
+            if (!seekBar.matches(':active')) seekBar.value = modelVid.currentTime;
+            timeDisplay.innerText = `${Math.floor(modelVid.currentTime)}s / ${Math.floor(modelVid.duration || 0)}s`;
+        });
+
+        function switchLayout() { displayMode = (displayMode + 1) % 3; showUI(); }
+        let uiTimer;
+        function showUI() { document.getElementById('topPanel').classList.add('ui-visible'); document.getElementById('bottomPanel').classList.add('ui-visible'); clearTimeout(uiTimer); uiTimer = setTimeout(() => { if(!modelVid.paused) hideUI(); }, 5000); }
+        function hideUI() { document.getElementById('topPanel').classList.remove('ui-visible'); document.getElementById('bottomPanel').classList.remove('ui-visible'); }
+        function handleCanvasClick() { if (document.getElementById('topPanel').classList.contains('ui-visible')) hideUI(); else showUI(); }
+        function closeSaveUI() { document.getElementById('saveContainer').style.display = 'none'; }
+        seekBar.oninput = () => { modelVid.currentTime = seekBar.value; showUI(); };
+    </script>
+</body>
+</html>
