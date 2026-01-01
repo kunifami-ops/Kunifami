@@ -30,7 +30,7 @@ A powerful web application designed to help you master any dance choreography.
 Compare your moves with reference videos in real-time with professional features.
 
 ## 🚀 Live Demo
-[Open the App](あなたのGitHub PagesのURLをここに貼る)
+[[Open the App](https://kunifami-ops.github.io/Kunifami/)]
 
 ## 🛠 Key Features
 - **Dual Display:** Side-by-side, Vertical, or Overlay (Ghost) modes.
