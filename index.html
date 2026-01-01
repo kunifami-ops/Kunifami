@@ -48,7 +48,7 @@
         input[type="range"].small-slider { width: 45px; height: 15px; margin: 0; vertical-align: middle; accent-color: #007AFF; }
     </style>
 </head>
-<body onload="checkDomain()">
+<body>
 
     <div id="countdownOverlay"></div>
 
@@ -76,7 +76,8 @@
             <button onclick="cycleQuality()" id="qualityBtn" style="padding: 2px 6px; background: #555;">💎 Mid</button>
             <div style="background:#333; padding:2px; border-radius:8px;">
                 ⏳ <button onclick="setCD(3)" id="cd3" class="active-btn" style="padding:2px 4px;">3s</button>
-                <button onclick="setCD(10)" id="cd10" style="padding:2px 4px;">10s</button>
+                <button onclick="setCD(5)" id="cd5" style="padding:2px 4px;">5s</button>
+                <button onclick="setCD(7)" id="cd7" style="padding:2px 4px;">7s</button>
             </div>
             <div style="display:flex; align-items:center; gap:2px;">
                 <span>💡</span><input type="range" id="brightnessRange" class="small-slider" min="100" max="400" value="100">
@@ -112,16 +113,6 @@
     <video id="myCamera" autoplay muted playsinline style="display:none;"></video>
 
     <script>
-        function checkDomain() {
-            const allowed = "kunifami-ops.github.io";
-            //if (window.location.hostname !== allowed && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") 
-{
-                document.body.innerHTML = "<div style='background:#000;color:#ff3b30;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;'>Invalid Domain</div>";
-                window.stop();
-                throw new Error("Access Denied");
-            }
-        }
-
         const canvas = document.getElementById('mainCanvas');
         const ctx = canvas.getContext('2d', { alpha: false });
         const modelVid = document.getElementById('modelVideo');
@@ -141,7 +132,7 @@
         let gridMode = 0, countdownSec = 3, isCountingDown = false;
         let mirrorModel = true, mirrorMe = true;
         let modelRotation = 0; 
-        let fitMode = "cover"; // 追加: "contain"（全体表示）か "cover"（拡大表示）
+        let fitMode = "cover"; 
         let uiTimer = null;
 
         const qualities = [{ label: 'Low', bps: 1200000 }, { label: 'Mid', bps: 2500000 }, { label: 'High', bps: 8000000 }];
@@ -150,10 +141,13 @@
         canvas.width = 1280; canvas.height = 720;
 
         async function checkAccess() {
-            if (document.getElementById('passInput').value === "kaecha") {
+            const input = document.getElementById('passInput').value;
+            if (input === "kaecha") {
                 document.getElementById('loginOverlay').style.display = 'none';
                 await initApp();
-            } else { document.getElementById('errMsg').style.display = 'block'; }
+            } else { 
+                document.getElementById('errMsg').style.display = 'block'; 
+            }
         }
 
         async function initApp() {
@@ -180,7 +174,7 @@
             resetUITimer();
         }
 
-        function toggleFitMode() { // 追加: 拡大モードの切り替え
+        function toggleFitMode() {
             fitMode = fitMode === "cover" ? "contain" : "cover";
             document.getElementById('fitModeBtn').classList.toggle('active-btn', fitMode === "cover");
             resetUITimer();
@@ -192,19 +186,28 @@
             ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
             const br = brightnessRange.value;
             const ghostOpacity = ghostRange.value / 100;
-            if (displayMode === 0) {
+
+            if (displayMode === 0) { // 左右分割
                 draw(modelVid, 0, 0, 640, 720, mirrorModel, 100, 1, modelRotation);
                 draw(myCam, 640, 0, 640, 720, mirrorMe, br, 1, 0);
                 if (ghostOpacity > 0) draw(modelVid, 640, 0, 640, 720, mirrorModel, 100, ghostOpacity, modelRotation);
-            } else if (displayMode === 1) {
+            } else if (displayMode === 1) { // お手本のみ
                 draw(modelVid, 0, 0, 1280, 720, mirrorModel, 100, 1, modelRotation);
-            } else {
+            } else if (displayMode === 2) { // 自分のみ + お手本ゴースト
                 draw(myCam, 0, 0, 1280, 720, mirrorMe, br, 1, 0);
                 if (ghostOpacity > 0) draw(modelVid, 0, 0, 1280, 720, mirrorModel, 100, ghostOpacity, modelRotation);
+            } else if (displayMode === 3) { // 上下分割
+                draw(modelVid, 0, 0, 1280, 360, mirrorModel, 100, 1, modelRotation);
+                draw(myCam, 0, 360, 1280, 360, mirrorMe, br, 1, 0);
+                if (ghostOpacity > 0) draw(modelVid, 0, 360, 1280, 360, mirrorModel, 100, ghostOpacity, modelRotation);
             }
+
             if (gridMode > 0) {
                 ctx.save(); ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.lineWidth = 2; ctx.beginPath();
-                if (gridMode === 1) { ctx.moveTo(640, 0); ctx.lineTo(640, 720); ctx.moveTo(0, 360); ctx.lineTo(1280, 360); }
+                if (gridMode === 1) { 
+                    if(displayMode === 3) { ctx.moveTo(0, 360); ctx.lineTo(1280, 360); }
+                    else { ctx.moveTo(640, 0); ctx.lineTo(640, 720); ctx.moveTo(0, 360); ctx.lineTo(1280, 360); }
+                }
                 else { for(let x=160; x<1280; x+=160) { ctx.moveTo(x, 0); ctx.lineTo(x, 720); } for(let y=90; y<720; y+=90) { ctx.moveTo(0, y); ctx.lineTo(1280, y); } }
                 ctx.stroke(); ctx.restore();
             }
@@ -217,28 +220,20 @@
             ctx.globalAlpha = alpha;
             const con = br > 100 ? 100 + (br - 100) * 0.25 : 100;
             ctx.filter = `brightness(${br}%) contrast(${con}%)`;
-
             ctx.translate(x + w / 2, y + h / 2);
             if (mirror) ctx.scale(-1, 1);
             if (rotation !== 0) ctx.rotate(rotation * Math.PI / 180);
-
             const is90 = rotation === 90 || rotation === 270;
             const vw = is90 ? v.videoHeight : v.videoWidth;
             const vh = is90 ? v.videoWidth : v.videoHeight;
-
-            // fitModeによって倍率計算を切り替え
-            // cover（拡大）: 隙間を埋める（大きい方の比率を採用）
-            // contain（全体）: 全体を収める（小さい方の比率を採用）
             const ratio = fitMode === "cover" ? Math.max(w / vw, h / vh) : Math.min(w / vw, h / vh);
-            
             const drawW = v.videoWidth * ratio;
             const drawH = v.videoHeight * ratio;
-
             ctx.drawImage(v, -drawW / 2, -drawH / 2, drawW, drawH);
             ctx.restore();
         }
 
-        function setCD(s) { countdownSec = s; [3, 10].forEach(v => { const btn = document.getElementById(`cd${v}`); if (btn) btn.classList.toggle('active-btn', v === s); }); resetUITimer(); }
+        function setCD(s) { countdownSec = s; [3, 5, 7, 10].forEach(v => { const btn = document.getElementById(`cd${v}`); if (btn) btn.classList.toggle('active-btn', v === s); }); resetUITimer(); }
         function handleRecordClick() { if (mediaRecorder && mediaRecorder.state === "recording") { stopRecording(); } else if (!isCountingDown) { startCountdown('record'); } resetUITimer(); }
         function startCountdown(type) {
             isCountingDown = true; hideUI();
@@ -268,7 +263,7 @@
         function setPoint(p) { if (p === 'A') { pointA = modelVid.currentTime; document.getElementById('btnA').innerText = `📍 A: ${Math.floor(pointA)}s`; } else { pointB = modelVid.currentTime; document.getElementById('btnB').innerText = `📍 B: ${Math.floor(pointB)}s`; } resetUITimer(); }
         function toggleLoop() { isLooping = !isLooping; document.getElementById('btnLoop').innerText = isLooping ? "🔁 Loop ON" : "🔁 Loop OFF"; resetUITimer(); }
         function toggleGrid() { gridMode = (gridMode + 1) % 3; document.getElementById('gridBtn').innerText = gridMode === 0 ? "#" : (gridMode === 1 ? "+" : "#F"); resetUITimer(); }
-        function switchLayout() { displayMode = (displayMode + 1) % 3; resetUITimer(); }
+        function switchLayout() { displayMode = (displayMode + 1) % 4; resetUITimer(); } // モード数を4に変更
         function showUI() { document.querySelectorAll('.fade-ui').forEach(u => u.classList.add('ui-visible')); resetUITimer(); }
         function hideUI() { document.querySelectorAll('.fade-ui').forEach(u => u.classList.remove('ui-visible')); if (uiTimer) clearTimeout(uiTimer); }
         function resetUITimer() { if (uiTimer) clearTimeout(uiTimer); uiTimer = setTimeout(() => { if (!modelVid.paused || (mediaRecorder && mediaRecorder.state === "recording")) hideUI(); }, 3000); }
