@@ -1,3 +1,5 @@
+[English follows Japanese]
+
 # 🕺 Dance Master Pro for iPhone ver1
 
 お手本ビデオと自分のカメラ映像を並べて表示し、ダンスの練習をサポートするウェブアプリです。
