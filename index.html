@@ -73,7 +73,8 @@
             <button onclick="changeSpeed()" id="btnSpeed" style="padding: 2px 6px;">x1.0</button>
             <div style="background:#333; padding:2px; border-radius:8px;">
                 ⏳ <button onclick="setCD(3)" id="cd3" class="active-btn" style="padding:2px 4px;">3s</button>
-                <button onclick="setCD(10)" id="cd10" style="padding:2px 4px;">10s</button>
+                <button onclick="setCD(5)" id="cd5" style="padding:2px 4px;">5s</button>
+                <button onclick="setCD(7)" id="cd7" style="padding:2px 4px;">7s</button>
             </div>
             <div style="display:flex; align-items:center; gap:2px;">
                 <span>💡</span><input type="range" id="brightnessRange" class="small-slider" min="100" max="400" value="100">
@@ -203,7 +204,14 @@
             ctx.restore();
         }
 
-        function setCD(s) { countdownSec = s; [3, 10].forEach(v => document.getElementById(`cd${v}`).classList.toggle('active-btn', v === s)); resetUITimer(); }
+        function setCD(s) { 
+            countdownSec = s; 
+            [3, 5, 7].forEach(v => {
+                const btn = document.getElementById(`cd${v}`);
+                if (btn) btn.classList.toggle('active-btn', v === s);
+            }); 
+            resetUITimer(); 
+        }
         
         function handleRecordClick() { 
             if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -215,82 +223,5 @@
         }
 
         function startCountdown(type) {
-            isCountingDown = true; hideUI(); // カウントダウン開始時にUIを隠す
-            let count = countdownSec; cdOverlay.style.display = 'block'; cdOverlay.innerText = count; modelVid.pause();
-            const timer = setInterval(() => {
-                count--; if (count > 0) cdOverlay.innerText = count;
-                else { clearInterval(timer); cdOverlay.style.display = 'none'; isCountingDown = false; if (type === 'record') executeRecording(); else { modelVid.currentTime = pointA; modelVid.play(); playPauseBtn.innerText = "⏸ 一時停止"; } }
-            }, 1000);
-        }
-
-        function executeRecording() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            recordedChunks = [];
-            const stream = canvas.captureStream(30);
-            const combined = new MediaStream([...stream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
-            mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/mp4' });
-            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            mediaRecorder.onstop = () => { lastBlob = new Blob(recordedChunks, { type: 'video/mp4' }); document.getElementById('previewVid').src = URL.createObjectURL(lastBlob); document.getElementById('saveContainer').style.display = 'block'; };
-            mediaRecorder.start(100); recordBtn.innerText = "停止"; recordBtn.classList.add('is-recording'); modelVid.currentTime = pointA; modelVid.play(); playPauseBtn.innerText = "⏸ 一時停止";
-        }
-
-        function stopRecording() { if (mediaRecorder.state === "recording") { mediaRecorder.stop(); modelVid.pause(); recordBtn.innerText = "録画開始"; recordBtn.classList.remove('is-recording'); playPauseBtn.innerText = "▶️ 再生"; showUI(); } }
-        
-        function loadVideo(e) { 
-            const f = e.target.files[0]; 
-            if(f) { 
-                modelVid.src = URL.createObjectURL(f); 
-                modelVid.onloadedmetadata = () => { seekBar.max = modelVid.duration; pointA = 0; pointB = modelVid.duration; updateTimeDisplay(); }; 
-            } 
-            resetUITimer();
-        }
-
-        function updateTimeDisplay() { timeDisplay.innerText = `${Math.floor(modelVid.currentTime)}s / ${Math.floor(modelVid.duration || 0)}s`; }
-        
-        function togglePlay() { 
-            if (modelVid.paused) { modelVid.play(); playPauseBtn.innerText = "⏸ 一時停止"; resetUITimer(); } 
-            else { modelVid.pause(); playPauseBtn.innerText = "▶️ 再生"; showUI(); } 
-        }
-
-        function changeSpeed() { speedIdx = (speedIdx + 1) % speeds.length; modelVid.playbackRate = speeds[speedIdx]; document.getElementById('btnSpeed').innerText = `x${speeds[speedIdx].toFixed(2)}`; resetUITimer(); }
-        function setPoint(p) { if (p === 'A') { pointA = modelVid.currentTime; document.getElementById('btnA').innerText = `📍 A: ${Math.floor(pointA)}s`; } else { pointB = modelVid.currentTime; document.getElementById('btnB').innerText = `📍 B: ${Math.floor(pointB)}s`; } resetUITimer(); }
-        function toggleLoop() { isLooping = !isLooping; document.getElementById('btnLoop').innerText = isLooping ? "🔁 Loop ON" : "🔁 Loop OFF"; resetUITimer(); }
-        function toggleGrid() { gridMode = (gridMode + 1) % 3; document.getElementById('btnGrid').innerText = gridMode === 0 ? "#" : (gridMode === 1 ? "+" : "#F"); resetUITimer(); }
-        function switchLayout() { displayMode = (displayMode + 1) % 3; resetUITimer(); }
-
-        // --- UI管理ロジック ---
-        function showUI() { 
-            document.querySelectorAll('.fade-ui').forEach(u => u.classList.add('ui-visible')); 
-            resetUITimer();
-        }
-        function hideUI() { 
-            document.querySelectorAll('.fade-ui').forEach(u => u.classList.remove('ui-visible')); 
-            if (uiTimer) clearTimeout(uiTimer);
-        }
-        function resetUITimer() {
-            if (uiTimer) clearTimeout(uiTimer);
-            // 録画中または再生中の時のみ自動で隠す（停止中は出しっぱなしにしたい場合は条件追加）
-            uiTimer = setTimeout(() => {
-                if (!modelVid.paused || (mediaRecorder && mediaRecorder.state === "recording")) {
-                    hideUI();
-                }
-            }, 3000); // 3秒で自動消去
-        }
-
-        function handleCanvasClick() { 
-            const isVisible = document.getElementById('topPanel').classList.contains('ui-visible');
-            if (isVisible) hideUI(); else showUI(); 
-        }
-
-        function closeSaveUI() { document.getElementById('saveContainer').style.display = 'none'; showUI(); }
-        async function shareVideo() { if (!lastBlob) return; const file = new File([lastBlob], "dance.mp4", { type: "video/mp4" }); await navigator.share({ files: [file] }); }
-        
-        seekBar.oninput = () => { modelVid.currentTime = seekBar.value; updateTimeDisplay(); resetUITimer(); };
-        // スライダー操作中に消えないようにする
-        brightnessRange.oninput = resetUITimer;
-        ghostRange.oninput = resetUITimer;
-
-        modelVid.ontimeupdate = () => { if (isLooping && modelVid.currentTime >= pointB) modelVid.currentTime = pointA; if (!seekBar.matches(':active')) seekBar.value = modelVid.currentTime; updateTimeDisplay(); };
-    </script>
-</body>
-</html>
+            isCountingDown = true; hideUI();
+            let count = countdownSec; cdOverlay.style.display = 'block'; cdOverlay.innerText = count; modelVid.pause
