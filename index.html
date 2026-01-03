@@ -85,6 +85,7 @@
             <button onclick="rotateModel()" id="rotateModelBtn">🔄 0°</button>
             <button onclick="toggleFitMode()" id="fitModeBtn"> [ ] 拡大切替</button>
             <button onclick="toggleMirror('me')" id="mirrorMeBtn" class="mirror-active">🤳自分反転</button>
+            <button onclick="switchCamera()" id="cameraFlipBtn" style="background: #555;">🔄カメラ</button>
             <button onclick="cycleGrid()" id="gridBtn" style="padding: 2px 6px;">#</button>
             <button onclick="changeSpeed()" id="btnSpeed" style="padding: 2px 6px;">x1.0</button>
             <button id="qualityBtn" style="padding: 2px 6px; background: #555;" onclick="cycleQuality()">💎 Mid</button>
@@ -150,6 +151,9 @@
         let mirrorModel = true, mirrorMe = true;
         let modelRotation = 0, fitMode = "cover", uiTimer = null, currentLang = 'ja';
 
+        // カメラ管理用変数
+        let currentFacingMode = "user"; 
+
         let cameraBuffer = [];
         const BUFFER_FPS = 30;
 
@@ -203,10 +207,55 @@
 
         async function initApp() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", frameRate: 30 }, audio: false });
+                // facingModeを変数で指定
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: currentFacingMode, frameRate: 30 }, 
+                    audio: false 
+                });
                 myCam.srcObject = stream;
-                showUI(); render();
-            } catch (e) { alert("Camera Access Denied"); }
+                showUI(); 
+                if(!window.isRendering) {
+                    window.isRendering = true;
+                    render();
+                }
+            } catch (e) { alert("Camera Access Denied: " + e); }
+        }
+
+        // カメラ切り替え関数
+        async function switchCamera() {
+            const btn = document.getElementById('cameraFlipBtn');
+            btn.disabled = true; // 連打防止
+            
+            try {
+                // 1. 現在のストリームを確実に停止
+                if (myCam.srcObject) {
+                    myCam.srcObject.getTracks().forEach(track => track.stop());
+                    myCam.srcObject = null;
+                }
+
+                // 2. ブラウザ側のカメラ解放を少し待つ（重要）
+                await new Promise(resolve => setTimeout(resolve, 400));
+
+                // 3. モード切り替え
+                currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+                
+                // 外カメラ時は「自分反転」を自動オフにする（鏡ではないため）
+                if (currentFacingMode === "environment") {
+                    mirrorMe = false;
+                    document.getElementById('mirrorMeBtn').classList.remove('mirror-active');
+                } else {
+                    mirrorMe = true;
+                    document.getElementById('mirrorMeBtn').classList.add('mirror-active');
+                }
+                
+                // 4. 再起動
+                await initApp();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                btn.disabled = false;
+                resetUITimer();
+            }
         }
 
         function switchLayout() {
@@ -310,7 +359,7 @@
             if (modelVid.captureStream) audioStream = modelVid.captureStream();
             else if (modelVid.mozCaptureStream) audioStream = modelVid.mozCaptureStream();
             else {
-                const tempAudioCtx = new AudioContext();
+                const tempAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const dest = tempAudioCtx.createMediaStreamDestination();
                 const source = tempAudioCtx.createMediaElementSource(modelVid);
                 source.connect(tempAudioCtx.destination); source.connect(dest);
@@ -368,7 +417,7 @@
         function resetUITimer() { if (uiTimer) clearTimeout(uiTimer); uiTimer = setTimeout(() => { if (!modelVid.paused || (mediaRecorder && mediaRecorder.state === "recording")) hideUI(); }, 3000); }
         function handleCanvasClick() { if (document.getElementById('topPanel').classList.contains('ui-visible')) hideUI(); else showUI(); }
         function closeSaveUI() { document.getElementById('saveContainer').style.display = 'none'; showUI(); }
-        async function shareVideo() { if (!lastBlob) return; const file = new File([lastBlob], "dance.mp4", { type: "video/mp4" }); try { await navigator.share({ files: [file] }); } catch(e) {} }
+        async function shareVideo() { if (!lastBlob) return; const file = new File([lastBlob], "practice.mp4", { type: "video/mp4" }); try { await navigator.share({ files: [file] }); } catch(e) {} }
         
         seekBar.oninput = () => { modelVid.currentTime = seekBar.value; updateTimeDisplay(); resetUITimer(); };
         modelVid.ontimeupdate = () => { if (isLooping && modelVid.currentTime >= pointB) modelVid.currentTime = pointA; if (!seekBar.matches(':active')) seekBar.value = modelVid.currentTime; updateTimeDisplay(); };
