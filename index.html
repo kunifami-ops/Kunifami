@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dance Master Pro for iPhone ver1.1</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; touch-action: manipulation; }
+        canvas { width: 100vw; height: 100vh; object-fit: contain; background: #111; display: block; }
+        .fade-ui { transition: opacity 0.5s ease, visibility 0.5s; opacity: 0; visibility: hidden; }
+        .ui-visible { opacity: 1; visibility: visible; }
+        
+        #countdownOverlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 120px; font-weight: bold; color: #ffcc00; z-index: 5000;
+            text-shadow: 0 0 20px rgba(0,0,0,1); pointer-events: none; display: none;
+        }
+
+        .ui-top { position: fixed; top: env(safe-area-inset-top, 10px); width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; }
+        .ui-bottom { 
+            position: fixed; bottom: env(safe-area-inset-bottom, 20px); width: 94%; left: 3%;
+            display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 100; 
+            background: rgba(0,0,0,0.75); padding: 10px 0; border-radius: 20px; backdrop-filter: blur(10px);
+        }
+        
+        .mirror-panel { background: rgba(50, 50, 50, 0.8); padding: 6px 12px; border-radius: 12px; display: flex; gap: 5px; font-size: 10px; border: 1px solid #444; align-items: center; flex-wrap: wrap; justify-content: center; }
+        #seekBar { width: 90%; height: 25px; accent-color: #007AFF; }
+        button { padding: 8px 12px; border-radius: 10px; border: none; font-weight: bold; background: #444; color: white; font-size: 12px; }
+        
+        #recordBtn { background: #ff3b30; min-width: 80px; }
+        #recordBtn.is-recording { background: #fff !important; color: #ff3b30; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        .active-btn { background: #007AFF !important; }
+        .mirror-active { background: #34c759 !important; }
+
+        #loginOverlay {
+            position: fixed; inset: 0; background: #000; z-index: 9000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; overflow-y: auto;
+        }
+        .intro-box { max-width: 500px; text-align: center; line-height: 1.6; margin-bottom: 20px; background: #111; padding: 20px; border-radius: 15px; border: 1px solid #333; }
+        .donation-links { display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; justify-content: center; }
+        .donation-links a { padding: 10px 15px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; color: white; background: #333; border: 1px solid #555; }
+        .btn-proceed { background:#007AFF; font-size:18px; width:180px; padding:15px; margin: 10px; }
+
+        #saveContainer { 
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: #1c1c1e; padding: 20px; border-radius: 25px; z-index: 9500; width: 85%; text-align: center; border: 1px solid #444;
+        }
+        #previewVid { width: 100%; border-radius: 15px; background: #000; margin-bottom: 15px; max-height: 50vh; }
+        input[type="range"].small-slider { width: 45px; height: 15px; margin: 0; vertical-align: middle; accent-color: #007AFF; }
+    </style>
+</head>
+<body>
+
+    <div id="countdownOverlay"></div>
+
+    <div id="loginOverlay">
+        <h2 style="margin-bottom: 20px; color: #007AFF;">Dance Master Pro ver1.1</h2>
+        <div class="intro-box">
+            <p style="font-size: 14px; margin: 0 0 15px 0; white-space: pre-wrap; color: #ddd;">こんにちは！便利なツールを開発しているクリエイターです。このアプリがあなたのダンス練習の役に立てば嬉しいです！今後も新しいプロジェクトをどんどん作っていく予定です。応援よろしくお願いします！</p>
+            <p style="font-size: 13px; margin: 0; white-space: pre-wrap; color: #aaa;">Hi! I'm a creator building useful tools. I hope this app helps your dance practice! I'm planning to launch more projects. Thank you for your support!</p>
+        </div>
+        <div class="donation-links">
+            <a href="https://github.com/kunifami-ops/Kunifami/wiki/Dance%E2%80%90master%E2%80%90pro%E2%80%90for%E2%80%90iphone%E2%80%90operation%E2%80%90manual" target="_blank" style="background: #28a745; border-color: #28a745;">📖 Manual</a>
+            <a href="https://ofuse.me/dfee538b" target="_blank">🇯🇵 OFUSE</a>
+            <a href="https://buymeacoffee.com/kunifami20w" target="_blank">🌎 Coffee</a>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center;">
+            <button class="btn-proceed" onclick="initAppWithLang('ja')">開始 (JP)</button>
+            <button class="btn-proceed" onclick="initAppWithLang('en')" style="background: #555;">Start (EN)</button>
+        </div>
+    </div>
+
+    <div id="topPanel" class="ui-top fade-ui">
+        <input type="file" id="fileInput" accept="video/*" onchange="loadVideo(event)" style="width:105px;">
+        <button id="btnLayout" onclick="switchLayout()">📺 Both</button>
+        <button id="recordBtn" onclick="handleRecordClick()">Record</button>
+    </div>
+
+    <div id="bottomPanel" class="ui-bottom fade-ui">
+        <div class="mirror-panel">
+            <button onclick="toggleMirror('model')" id="mirrorModelBtn" class="mirror-active">🪞Ref</button>
+            <button onclick="rotateModel()" id="rotateModelBtn">🔄 0°</button>
+            <button onclick="toggleFitMode()" id="fitModeBtn"> [ ] Fit Mode</button>
+            <button onclick="toggleMirror('me')" id="mirrorMeBtn" class="mirror-active">🤳Me</button>
+            <button onclick="switchCamera()" id="cameraFlipBtn" style="background: #555;">🔄Camera</button>
+            <button onclick="cycleGrid()" id="gridBtn" style="padding: 2px 6px;">#</button>
+            <button onclick="changeSpeed()" id="btnSpeed" style="padding: 2px 6px;">x1.0</button>
+            <button id="qualityBtn" style="padding: 2px 6px; background: #555;" onclick="cycleQuality()">💎 Mid</button>
+            <button id="delayBtn" style="padding: 2px 6px; background: #5856d6;" onclick="cycleDelay()">⏱ 0s</button>
+            <div style="background:#333; padding:2px; border-radius:8px;">
+                ⏳ <button onclick="setCD(3)" id="cd3" class="active-btn" style="padding:2px 4px;">3s</button>
+                <button onclick="setCD(5)" id="cd5" style="padding:2px 4px;">5s</button>
+                <button onclick="setCD(7)" id="cd7" style="padding:2px 4px;">7s</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:2px;">
+                <span>💡</span><input type="range" id="brightnessRange" class="small-slider" min="100" max="400" value="100">
+                <span>👻</span><input type="range" id="ghostRange" class="small-slider" min="0" max="100" value="0">
+            </div>
+        </div>
+        <div id="timeDisplay" style="font-size: 11px; color: #aaa;">0s / 0s</div>
+        <input type="range" id="seekBar" value="0" step="0.1">
+        <div style="display:flex; gap:6px;">
+            <button id="btnReset" onclick="startCountdown('reset')" style="background:#5856d6;">🔄 Back to A</button>
+            <button onclick="modelVid.currentTime -= 5">⏪ 5s</button>
+            <button id="playPauseBtn" onclick="togglePlay()">▶️ Play</button>
+            <button onclick="modelVid.currentTime += 5">5s ⏩</button>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:4px;">
+            <button onclick="setPoint('A')" id="btnA">📍 A: --</button>
+            <button onclick="setPoint('B')" id="btnB">📍 B: --</button>
+            <button onclick="toggleLoop()" id="btnLoop">🔁 Loop OFF</button>
+        </div>
+    </div>
+
+    <div id="saveContainer">
+        <h3 id="saveTitle" style="margin-top:0;">Done</h3>
+        <video id="previewVid" playsinline controls></video>
+        <div style="display:flex; gap:10px;">
+            <button id="btnCloseSave" onclick="closeSaveUI()" style="background:#555; flex:1;">Close</button>
+            <button id="shareBtn" onclick="shareVideo()" style="background:#007AFF; flex:2;">Save/Share</button>
+        </div>
+    </div>
+
+    <canvas id="mainCanvas" onclick="handleCanvasClick()"></canvas>
+    <video id="modelVideo" loop playsinline style="display:none;" crossorigin="anonymous"></video>
+    <video id="myCamera" autoplay muted playsinline style="display:none;"></video>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const modelVid = document.getElementById('modelVideo');
+        const myCam = document.getElementById('myCamera');
+        const seekBar = document.getElementById('seekBar');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const brightnessRange = document.getElementById('brightnessRange');
+        const ghostRange = document.getElementById('ghostRange');
+        const cdOverlay = document.getElementById('countdownOverlay');
+        
+        let displayMode = 0; 
+        let mediaRecorder = null, recordedChunks = [];
+        let pointA = 0, pointB = 0, isLooping = false;
+        let lastBlob = null;
+        let speeds = [1.0, 0.75, 0.5, 1.25, 1.5], speedIdx = 0;
+        let delayTimes = [0, 3, 4, 5], delayIdx = 0; 
+        let gridMode = 0, countdownSec = 3, isCountingDown = false;
+        let mirrorModel = true, mirrorMe = true;
+        let modelRotation = 0, fitMode = "cover", uiTimer = null, currentLang = 'ja';
+
+        let currentFacingMode = "user"; 
+        let cameraBuffer = [];
+        const BUFFER_FPS = 30;
+
+        const i18n = {
+            ja: {
+                layouts: ["📺 両方", "📺 見本", "📺 カメラ"], 
+                record: "録画開始", recordStop: "停止", mirrorModel: "🪞見本反転", mirrorMe: "🤳自分反転", 
+                rotate: "🔄 回転", fit: " [ ] 拡大切替", play: "▶️ 再生", pause: "⏸ 一時停止",
+                reset: "🔄 待機戻り", loopOn: "🔁 Loop ON", loopOff: "🔁 Loop OFF",
+                saveTitle: "録画完了", close: "閉じる", share: "保存・共有",
+                gridLabels: ["#", "+", "#F", "#16"],
+                cameraFlip: "🔄カメラ" // 追加
+            },
+            en: {
+                layouts: ["📺 Both", "📺 Ref", "📺 Camera"], 
+                record: "Record", recordStop: "Stop", mirrorModel: "🪞Ref", mirrorMe: "🤳Me", 
+                rotate: "🔄 Rotate", fit: " [ ] Fit Mode", play: "▶️ Play", pause: "⏸ Pause",
+                reset: "🔄 Back to A", loopOn: "🔁 Loop ON", loopOff: "🔁 Loop OFF",
+                saveTitle: "Done", close: "Close", share: "Save/Share",
+                gridLabels: ["#", "+", "#F", "#16"],
+                cameraFlip: "🔄Camera" // 追加
+            }
+        };
+
+        const qualities = [{ label: 'Low', bps: 1200000 }, { label: 'Mid', bps: 2500000 }, { label: 'High', bps: 8000000 }];
+        let qualityIdx = 1;
+
+        canvas.width = 1280; canvas.height = 720;
+
+        async function initAppWithLang(lang) {
+            currentLang = lang;
+            document.getElementById('loginOverlay').style.display = 'none';
+            applyLanguage();
+            await initApp();
+        }
+
+        function applyLanguage() {
+            const t = i18n[currentLang];
+            document.getElementById('btnLayout').innerText = t.layouts[displayMode];
+            document.getElementById('recordBtn').innerText = t.record;
+            document.getElementById('mirrorModelBtn').innerText = t.mirrorModel;
+            document.getElementById('mirrorMeBtn').innerText = t.mirrorMe;
+            document.getElementById('rotateModelBtn').innerText = `🔄 ${modelRotation}°`;
+            document.getElementById('fitModeBtn').innerText = t.fit;
+            document.getElementById('playPauseBtn').innerText = (modelVid.paused) ? t.play : t.pause;
+            document.getElementById('btnReset').innerText = t.reset;
+            document.getElementById('btnLoop').innerText = isLooping ? t.loopOn : t.loopOff;
+            document.getElementById('saveTitle').innerText = t.saveTitle;
+            document.getElementById('btnCloseSave').innerText = t.close;
+            document.getElementById('shareBtn').innerText = t.share;
+            document.getElementById('gridBtn').innerText = t.gridLabels[gridMode];
+            document.getElementById('cameraFlipBtn').innerText = t.cameraFlip; // 言語切り替え時にカメラボタンも更新
+        }
+
+        async function initApp() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: currentFacingMode, frameRate: 30 }, 
+                    audio: false 
+                });
+                myCam.srcObject = stream;
+                showUI(); 
+                if(!window.isRendering) {
+                    window.isRendering = true;
+                    render();
+                }
+            } catch (e) { alert("Camera Access Denied: " + e); }
+        }
+
+        async function switchCamera() {
+            const btn = document.getElementById('cameraFlipBtn');
+            btn.disabled = true; 
+            try {
+                if (myCam.srcObject) {
+                    myCam.srcObject.getTracks().forEach(track => track.stop());
+                    myCam.srcObject = null;
+                }
+                await new Promise(resolve => setTimeout(resolve, 400));
+                currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+                
+                if (currentFacingMode === "environment") {
+                    mirrorMe = false;
+                    document.getElementById('mirrorMeBtn').classList.remove('mirror-active');
+                } else {
+                    mirrorMe = true;
+                    document.getElementById('mirrorMeBtn').classList.add('mirror-active');
+                }
+                await initApp();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                btn.disabled = false;
+                resetUITimer();
+            }
+        }
+
+        function switchLayout() {
+            displayMode = (displayMode + 1) % 3;
+            document.getElementById('btnLayout').innerText = i18n[currentLang].layouts[displayMode];
+            resetUITimer();
+        }
+
+        function render() {
+            ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (myCam.readyState >= 2) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = myCam.videoWidth;
+                tempCanvas.height = myCam.videoHeight;
+                const tCtx = tempCanvas.getContext('2d');
+                tCtx.drawImage(myCam, 0, 0);
+                cameraBuffer.push(tempCanvas);
+                const maxBufferSize = BUFFER_FPS * 6; 
+                if (cameraBuffer.length > maxBufferSize) cameraBuffer.shift();
+            }
+            const br = brightnessRange.value;
+            const ghostOpacity = ghostRange.value / 100;
+            const delaySec = delayTimes[delayIdx];
+            const bufferIdx = Math.max(0, cameraBuffer.length - 1 - (delaySec * BUFFER_FPS));
+            const currentCamFrame = cameraBuffer[bufferIdx] || myCam;
+            if (displayMode === 0) { 
+                draw(modelVid, 0, 0, 640, 720, mirrorModel, 100, 1, modelRotation);
+                draw(currentCamFrame, 640, 0, 640, 720, mirrorMe, br, 1, 0);
+                if (ghostOpacity > 0) draw(modelVid, 640, 0, 640, 720, mirrorModel, 100, ghostOpacity, modelRotation);
+            } else if (displayMode === 1) { 
+                draw(modelVid, 0, 0, 1280, 720, mirrorModel, 100, 1, modelRotation);
+            } else if (displayMode === 2) { 
+                draw(currentCamFrame, 0, 0, 1280, 720, mirrorMe, br, 1, 0);
+                if (ghostOpacity > 0) draw(modelVid, 0, 0, 1280, 720, mirrorModel, 100, ghostOpacity, modelRotation);
+            }
+            if (gridMode > 0) {
+                ctx.save(); ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.lineWidth = 1; ctx.beginPath();
+                if (gridMode === 1) { ctx.moveTo(640, 0); ctx.lineTo(640, 720); ctx.moveTo(0, 360); ctx.lineTo(1280, 360); }
+                else if (gridMode === 2) { for(let x=426; x<1280; x+=426) { ctx.moveTo(x, 0); ctx.lineTo(x, 720); } for(let y=240; y<720; y+=240) { ctx.moveTo(0, y); ctx.lineTo(1280, y); } }
+                else if (gridMode === 3) { for(let x=80; x<1280; x+=80) { ctx.moveTo(x, 0); ctx.lineTo(x, 720); } for(let y=45; y<720; y+=45) { ctx.moveTo(0, y); ctx.lineTo(1280, y); } }
+                ctx.stroke(); ctx.restore();
+            }
+            requestAnimationFrame(render);
+        }
+
+        function draw(v, x, y, w, h, mirror, br, alpha, rotation = 0) {
+            const isVideo = v instanceof HTMLVideoElement;
+            if (isVideo && v.readyState < 2) return; 
+            ctx.save(); ctx.globalAlpha = alpha;
+            const con = br > 100 ? 100 + (br - 100) * 0.25 : 100;
+            ctx.filter = `brightness(${br}%) contrast(${con}%)`;
+            ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+            ctx.translate(x + w / 2, y + h / 2);
+            if (mirror) ctx.scale(-1, 1);
+            if (rotation !== 0) ctx.rotate(rotation * Math.PI / 180);
+            const vWidth = isVideo ? v.videoWidth : v.width;
+            const vHeight = isVideo ? v.videoHeight : v.height;
+            const is90 = rotation === 90 || rotation === 270;
+            const vw = is90 ? vHeight : vWidth;
+            const vh = is90 ? vWidth : vHeight;
+            const ratio = fitMode === "cover" ? Math.max(w / vw, h / vh) : Math.min(w / vw, h / vh);
+            const drawW = vWidth * ratio; const drawH = vHeight * ratio;
+            ctx.drawImage(v, -drawW / 2, -drawH / 2, drawW, drawH);
+            ctx.restore();
+        }
+
+        function toggleMirror(target) {
+            if (target === 'model') { mirrorModel = !mirrorModel; document.getElementById('mirrorModelBtn').classList.toggle('mirror-active', mirrorModel); }
+            else { mirrorMe = !mirrorMe; document.getElementById('mirrorMeBtn').classList.toggle('mirror-active', mirrorMe); }
+            resetUITimer();
+        }
+        function rotateModel() { modelRotation = (modelRotation + 90) % 360; document.getElementById('rotateModelBtn').innerText = `🔄 ${modelRotation}°`; resetUITimer(); }
+        function toggleFitMode() { 
+            fitMode = fitMode === "cover" ? "contain" : "cover"; 
+            document.getElementById('fitModeBtn').innerText = i18n[currentLang].fit;
+            document.getElementById('fitModeBtn').classList.toggle('active-btn', fitMode === "cover");
+            resetUITimer(); 
+        }
+        function cycleGrid() { gridMode = (gridMode + 1) % 4; document.getElementById('gridBtn').innerText = i18n[currentLang].gridLabels[gridMode]; resetUITimer(); }
+        function cycleDelay() { delayIdx = (delayIdx + 1) % delayTimes.length; document.getElementById('delayBtn').innerText = `⏱ ${delayTimes[delayIdx]}s`; resetUITimer(); }
+        function cycleQuality() { qualityIdx = (qualityIdx + 1) % qualities.length; document.getElementById('qualityBtn').innerText = `💎 ${qualities[qualityIdx].label}`; resetUITimer(); }
+        function setCD(s) { countdownSec = s; [3, 5, 7].forEach(v => { const btn = document.getElementById(`cd${v}`); if (btn) btn.classList.toggle('active-btn', v === s); }); resetUITimer(); }
+        function handleRecordClick() { if (mediaRecorder && mediaRecorder.state === "recording") stopRecording(); else if (!isCountingDown) startCountdown('record'); resetUITimer(); }
+        function startCountdown(type) {
+            isCountingDown = true; hideUI();
+            let count = countdownSec; cdOverlay.style.display = 'block'; cdOverlay.innerText = count; modelVid.pause();
+            const timer = setInterval(() => {
+                count--; if (count > 0) cdOverlay.innerText = count;
+                else { 
+                    clearInterval(timer); cdOverlay.style.display = 'none'; isCountingDown = false; 
+                    if (type === 'record') executeRecording(); 
+                    else { modelVid.currentTime = pointA; modelVid.play(); playPauseBtn.innerText = i18n[currentLang].pause; } 
+                }
+            }, 1000);
+        }
+
+        function executeRecording() {
+            recordedChunks = [];
+            const canvasStream = canvas.captureStream(30);
+            let audioStream;
+            if (modelVid.captureStream) audioStream = modelVid.captureStream();
+            else if (modelVid.mozCaptureStream) audioStream = modelVid.mozCaptureStream();
+            else {
+                const tempAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const dest = tempAudioCtx.createMediaStreamDestination();
+                const source = tempAudioCtx.createMediaElementSource(modelVid);
+                source.connect(tempAudioCtx.destination); source.connect(dest);
+                audioStream = dest.stream;
+            }
+            const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioStream.getAudioTracks()]);
+            const options = { mimeType: 'video/mp4', videoBitsPerSecond: qualities[qualityIdx].bps };
+            if (!MediaRecorder.isTypeSupported('video/mp4')) options.mimeType = 'video/webm;codecs=vp8';
+            mediaRecorder = new MediaRecorder(combined, options);
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => { 
+                const blob = new Blob(recordedChunks, { type: options.mimeType });
+                lastBlob = blob;
+                const videoURL = URL.createObjectURL(blob);
+                const previewVid = document.getElementById('previewVid');
+                previewVid.src = videoURL;
+                document.getElementById('saveContainer').style.display = 'block';
+                previewVid.play();
+            };
+            mediaRecorder.start(100); 
+            recordBtn.innerText = i18n[currentLang].recordStop; recordBtn.classList.add('is-recording'); 
+            modelVid.currentTime = pointA; modelVid.play(); playPauseBtn.innerText = i18n[currentLang].pause;
+        }
+
+        function stopRecording() { 
+            if (mediaRecorder && mediaRecorder.state === "recording") { 
+                mediaRecorder.stop(); modelVid.pause(); 
+                recordBtn.innerText = i18n[currentLang].record; recordBtn.classList.remove('is-recording'); 
+                playPauseBtn.innerText = i18n[currentLang].play; showUI(); 
+            } 
+        }
+
+        function loadVideo(e) { 
+            const f = e.target.files[0]; 
+            if(f) { 
+                modelVid.src = URL.createObjectURL(f); 
+                modelVid.onloadedmetadata = () => { seekBar.max = modelVid.duration; pointA = 0; pointB = modelVid.duration; updateTimeDisplay(); }; 
+            } 
+            resetUITimer(); 
+        }
+        function updateTimeDisplay() { timeDisplay.innerText = `${Math.floor(modelVid.currentTime)}s / ${Math.floor(modelVid.duration || 0)}s`; }
+        function togglePlay() { 
+            if (modelVid.paused) { modelVid.play(); playPauseBtn.innerText = i18n[currentLang].pause; resetUITimer(); } 
+            else { modelVid.pause(); playPauseBtn.innerText = i18n[currentLang].play; showUI(); } 
+        }
+        function changeSpeed() { 
+            speedIdx = (speedIdx + 1) % speeds.length; 
+            modelVid.playbackRate = speeds[speedIdx]; modelVid.preservesPitch = true;
+            document.getElementById('btnSpeed').innerText = `x${speeds[speedIdx].toFixed(2)}`; resetUITimer(); 
+        }
+        function setPoint(p) { if (p === 'A') { pointA = modelVid.currentTime; document.getElementById('btnA').innerText = `📍 A: ${Math.floor(pointA)}s`; } else { pointB = modelVid.currentTime; document.getElementById('btnB').innerText = `📍 B: ${Math.floor(pointB)}s`; } resetUITimer(); }
+        function toggleLoop() { isLooping = !isLooping; document.getElementById('btnLoop').innerText = isLooping ? i18n[currentLang].loopOn : i18n[currentLang].loopOff; resetUITimer(); }
+        function showUI() { document.querySelectorAll('.fade-ui').forEach(u => u.classList.add('ui-visible')); resetUITimer(); }
+        function hideUI() { document.querySelectorAll('.fade-ui').forEach(u => u.classList.remove('ui-visible')); if (uiTimer) clearTimeout(uiTimer); }
+        function resetUITimer() { if (uiTimer) clearTimeout(uiTimer); uiTimer = setTimeout(() => { if (!modelVid.paused || (mediaRecorder && mediaRecorder.state === "recording")) hideUI(); }, 3000); }
+        function handleCanvasClick() { if (document.getElementById('topPanel').classList.contains('ui-visible')) hideUI(); else showUI(); }
+        function closeSaveUI() { document.getElementById('saveContainer').style.display = 'none'; showUI(); }
+        async function shareVideo() { if (!lastBlob) return; const file = new File([lastBlob], "practice.mp4", { type: "video/mp4" }); try { await navigator.share({ files: [file] }); } catch(e) {} }
+        
+        seekBar.oninput = () => { modelVid.currentTime = seekBar.value; updateTimeDisplay(); resetUITimer(); };
+        modelVid.ontimeupdate = () => { if (isLooping && modelVid.currentTime >= pointB) modelVid.currentTime = pointA; if (!seekBar.matches(':active')) seekBar.value = modelVid.currentTime; updateTimeDisplay(); };
+    </script>
+</body>
+</html>
